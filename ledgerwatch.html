@@ -1,0 +1,1835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LEDGERWATCH — Bitcoin Traffic Intelligence Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root {
+  --bg: #0a0e14;
+  --bg-alt: #0d1219;
+  --panel: #10161f;
+  --panel-2: #141b26;
+  --border: #202a38;
+  --border-soft: #1a222e;
+  --text: #dde3ec;
+  --text-dim: #8493a8;
+  --text-faint: #56637a;
+  --teal: #2ed3c6;
+  --teal-dim: #1a4b48;
+  --indigo: #7c93ff;
+  --amber: #f0ac4b;
+  --coral: #ff6b5c;
+  --green: #5cd694;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', -apple-system, sans-serif;
+  --radius: 3px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+html { scroll-padding-top: var(--safe-top); }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--teal-dim); color: #fff; }
+a { color: inherit; }
+button { font-family: var(--sans); cursor: pointer; }
+.mono { font-family: var(--mono); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- top bar ---------- */
+#topbar {
+  position: sticky; top: 0; z-index: 50;
+  padding-top: var(--safe-top);
+  background: rgba(10,14,20,0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-soft);
+}
+.topbar-inner {
+  display: flex; align-items: center; gap: 24px;
+  padding: 0 20px; height: 54px;
+  max-width: 1680px; margin: 0 auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.brand-mark {
+  width: 26px; height: 26px; position: relative; flex-shrink: 0;
+}
+.brand-mark svg { width: 100%; height: 100%; }
+.brand-name { font-weight: 600; font-size: 15px; letter-spacing: 0.2px; }
+.brand-sub { font-size: 10px; color: var(--text-faint); font-family: var(--mono); margin-top: -2px; }
+nav#tabs {
+  display: flex; gap: 2px; overflow-x: auto; flex: 1;
+  scrollbar-width: none;
+}
+nav#tabs::-webkit-scrollbar { display: none; }
+nav#tabs button {
+  background: none; border: none; color: var(--text-dim);
+  padding: 8px 13px; font-size: 12.5px; border-radius: var(--radius);
+  white-space: nowrap; transition: background .15s, color .15s;
+  border-bottom: 2px solid transparent;
+}
+nav#tabs button:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+nav#tabs button.active { color: var(--teal); border-bottom-color: var(--teal); }
+.topbar-right { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.status-chip {
+  display: flex; align-items: center; gap: 6px; font-family: var(--mono);
+  font-size: 11px; color: var(--text-dim); padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* ---------- layout ---------- */
+main { max-width: 1680px; margin: 0 auto; padding: 22px 20px 60px; }
+.page { display: none; }
+.page.active { display: block; animation: fadein .25s ease; }
+@keyframes fadein { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform:none; } }
+
+.page-head { display:flex; align-items:baseline; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px;}
+.page-title { font-size: 19px; font-weight: 600; margin: 0; }
+.page-desc { color: var(--text-dim); font-size: 12.5px; margin-top: 3px; }
+
+.grid { display: grid; gap: 12px; }
+.grid-stats { grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); }
+.grid-alerts { grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); }
+.grid-2 { grid-template-columns: 1.4fr 1fr; }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-viz { grid-template-columns: 1.3fr 1fr; }
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .grid-viz { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
+.card-title { font-size: 12.5px; font-weight: 600; color: var(--text); text-transform: none; }
+.card-sub { font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+
+.stat-card { padding: 14px 16px; }
+.stat-label { font-size: 11px; color: var(--text-faint); margin-bottom: 8px; }
+.stat-value { font-size: 24px; font-weight: 600; font-family: var(--mono); letter-spacing: -0.5px; }
+.stat-delta { font-size: 11px; margin-top: 6px; font-family: var(--mono); }
+.stat-delta.up { color: var(--green); }
+.stat-delta.down { color: var(--coral); }
+
+.alert-card { padding: 14px; border-left: 3px solid var(--border); position: relative; }
+.alert-card .stat-value { font-size: 22px; }
+.alert-card.crit { border-left-color: var(--coral); }
+.alert-card.high { border-left-color: var(--amber); }
+.alert-card.med { border-left-color: var(--indigo); }
+.alert-card.low { border-left-color: var(--green); }
+.alert-card.new { border-left-color: var(--teal); }
+.alert-card.cluster { border-left-color: var(--text-faint); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 10px; font-size: 10.5px;
+  font-family: var(--mono); font-weight: 500;
+  border: 1px solid transparent;
+}
+.pill.crit { background: rgba(255,107,92,0.12); color: var(--coral); border-color: rgba(255,107,92,0.3); }
+.pill.high { background: rgba(240,172,75,0.12); color: var(--amber); border-color: rgba(240,172,75,0.3); }
+.pill.med { background: rgba(124,147,255,0.12); color: var(--indigo); border-color: rgba(124,147,255,0.3); }
+.pill.low { background: rgba(92,214,148,0.12); color: var(--green); border-color: rgba(92,214,148,0.3); }
+.pill.info { background: rgba(46,211,198,0.1); color: var(--teal); border-color: rgba(46,211,198,0.28); }
+.pill.neutral { background: rgba(255,255,255,0.05); color: var(--text-dim); border-color: var(--border); }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; color: var(--text-faint); font-weight: 500; font-size: 11px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+tr.row-link { cursor: pointer; transition: background .12s; }
+tr.row-link:hover { background: rgba(255,255,255,0.025); }
+.table-wrap { overflow-x: auto; }
+
+.btn {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  padding: 7px 13px; border-radius: var(--radius); font-size: 12px; font-weight: 500;
+  transition: border-color .15s, background .15s;
+}
+.btn:hover { border-color: var(--text-faint); }
+.btn.primary { background: var(--teal); color: #06201d; border-color: var(--teal); font-weight: 600; }
+.btn.primary:hover { background: #3fe0d2; }
+.btn.small { padding: 4px 9px; font-size: 11px; }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+input[type=text], input[type=search], select, textarea {
+  background: var(--bg-alt); border: 1px solid var(--border); color: var(--text);
+  padding: 7px 10px; border-radius: var(--radius); font-size: 12.5px; font-family: var(--sans);
+}
+textarea { font-family: var(--mono); }
+input:focus, select:focus, textarea:focus, button:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: 1px;
+}
+
+.section-label { font-size: 10.5px; letter-spacing: 0.3px; color: var(--text-faint); margin: 22px 0 10px; }
+.hr { height: 1px; background: var(--border-soft); margin: 16px 0; border: none; }
+.chart-box { position: relative; height: 210px; }
+.chart-box.tall { height: 280px; }
+.entity-id { font-family: var(--mono); color: var(--teal); }
+.ip-id { font-family: var(--mono); color: var(--indigo); }
+.tx-id { font-family: var(--mono); color: var(--text-dim); }
+
+.flow-diagram { display:flex; flex-direction:column; align-items:center; gap:0; }
+.flow-step {
+  width: 100%; max-width: 460px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px; text-align:center; font-size:12.5px;
+  position: relative; transition: border-color .2s, background .2s;
+}
+.flow-step.active { border-color: var(--teal); background: rgba(46,211,198,0.06); color: var(--teal); }
+.flow-step.done { border-color: var(--green); color: var(--green); }
+.flow-arrow { color: var(--text-faint); font-size: 14px; padding: 3px 0; }
+
+.upload-zone {
+  border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 40px 20px;
+  text-align: center; color: var(--text-dim); transition: border-color .2s, background .2s; cursor: pointer;
+}
+.upload-zone:hover { border-color: var(--teal); background: rgba(46,211,198,0.03); }
+.upload-zone svg { opacity: .5; margin-bottom: 10px; }
+
+.progress-track { height: 6px; background: var(--bg-alt); border-radius: 3px; overflow: hidden; border: 1px solid var(--border-soft); }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--indigo)); width: 0%; transition: width .4s ease; }
+
+.filter-bar { display:flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+.filter-bar .spacer { flex: 1; }
+
+.tabbed-subnav { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border-soft); }
+.tabbed-subnav button {
+  background:none; border:none; color: var(--text-dim); padding: 7px 12px; font-size: 12px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabbed-subnav button.active { color: var(--text); border-bottom-color: var(--indigo); }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(5,7,11,0.7); backdrop-filter: blur(2px);
+  display: none; align-items: flex-start; justify-content: center; z-index: 200;
+  overflow-y: auto; padding: 40px 16px calc(40px + var(--safe-bottom));
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 5px;
+  max-width: 720px; width: 100%; padding: 22px; position: relative;
+}
+.modal-close { position:absolute; top: 14px; right: 14px; background:none; border:none; color: var(--text-faint); font-size: 18px; }
+.modal h2 { margin: 0 0 4px; font-size: 17px; }
+.modal .modal-sub { color: var(--text-faint); font-family: var(--mono); font-size: 11.5px; margin-bottom: 16px; }
+
+.reason-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.reason-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; padding: 9px 11px; background: var(--bg-alt); border-radius: var(--radius); border: 1px solid var(--border-soft); }
+.reason-num { font-family: var(--mono); color: var(--amber); font-size: 11px; flex-shrink:0; margin-top: 1px; }
+
+.feature-bar-row { display:flex; align-items:center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+.feature-bar-label { width: 170px; color: var(--text-dim); flex-shrink:0; }
+.feature-bar-track { flex:1; height: 7px; background: var(--bg-alt); border-radius: 4px; overflow:hidden; }
+.feature-bar-fill { height: 100%; background: var(--amber); border-radius: 4px; }
+.feature-bar-val { width: 34px; text-align:right; font-family: var(--mono); color: var(--text-dim); font-size: 11px; }
+
+.chip-row { display:flex; gap:6px; flex-wrap:wrap; }
+.chip { padding: 3px 9px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 12px; font-size: 11px; font-family: var(--mono); color: var(--text-dim); }
+
+.callout {
+  background: rgba(240,172,75,0.06); border: 1px solid rgba(240,172,75,0.25);
+  border-radius: var(--radius); padding: 10px 13px; font-size: 12px; color: #e3c383;
+  display:flex; gap: 8px; align-items: flex-start; margin-bottom: 14px;
+}
+.callout.info { background: rgba(46,211,198,0.05); border-color: rgba(46,211,198,0.22); color: #9fe8e0; }
+
+#graph-wrap { position: relative; height: 520px; background: var(--bg-alt); border-radius: var(--radius); border: 1px solid var(--border-soft); overflow: hidden; }
+#graph-svg { width: 100%; height: 100%; cursor: grab; }
+.graph-legend { position:absolute; top:10px; left:10px; background: rgba(16,22,31,0.85); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size:11px; display:flex; flex-direction:column; gap:5px; }
+.graph-legend .item { display:flex; align-items:center; gap:6px; }
+.legend-dot { width:9px; height:9px; border-radius:50%; }
+.graph-controls { position:absolute; top:10px; right:10px; display:flex; gap:6px; }
+.node-panel { position:absolute; bottom:10px; left:10px; right:10px; background: rgba(16,22,31,0.95); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-size:12px; display:none; max-height: 180px; overflow-y:auto;}
+.node-panel.open { display:block; }
+
+.world-map { width:100%; height: 420px; background: var(--bg-alt); border-radius: var(--radius); border: 1px solid var(--border-soft); }
+
+.chat-window { height: 400px; overflow-y: auto; padding: 14px; display:flex; flex-direction:column; gap: 12px; background: var(--bg-alt); border-radius: var(--radius); border: 1px solid var(--border-soft); }
+.chat-msg { max-width: 84%; padding: 10px 13px; border-radius: 6px; font-size: 13px; line-height:1.5; }
+.chat-msg.user { align-self: flex-end; background: var(--teal-dim); color: #cdf5f0; border: 1px solid rgba(46,211,198,0.3); }
+.chat-msg.ai { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border); }
+.chat-msg.ai .disclaimer { color: var(--text-faint); font-size: 10.5px; margin-top: 6px; font-style: italic; }
+.chat-suggestions { display:flex; gap:6px; flex-wrap:wrap; margin-top: 10px; }
+.chat-suggestions button { font-size: 11px; padding: 5px 10px; }
+.chat-input-row { display:flex; gap:8px; margin-top: 10px; }
+.chat-input-row input { flex:1; }
+
+.timeline-spike { fill: var(--coral); }
+.case-entity-tag { display:inline-flex; align-items:center; gap:6px; background: var(--bg-alt); border:1px solid var(--border); padding:4px 9px; border-radius: 12px; font-family: var(--mono); font-size: 11.5px; }
+.case-entity-tag button { background:none;border:none;color:var(--text-faint); font-size: 13px; line-height:1;}
+
+.arch-flow { display:flex; flex-direction: column; align-items: center; gap: 2px; }
+.arch-box { background: var(--panel-2); border: 1px solid var(--border); padding: 11px 22px; border-radius: var(--radius); text-align:center; min-width: 220px; }
+.arch-box .t { font-size: 12.5px; font-weight: 600; }
+.arch-box .s { font-size: 11px; color: var(--text-faint); font-family: var(--mono); margin-top: 2px; }
+.arch-arrow { color: var(--text-faint); }
+.funnel-row { display:flex; align-items:center; gap: 14px; margin-bottom: 6px; }
+.funnel-bar { height: 30px; background: linear-gradient(90deg, var(--teal), var(--indigo)); border-radius: 3px; display:flex; align-items:center; padding: 0 12px; font-family: var(--mono); font-size: 12px; color:#06201d; font-weight:600; white-space:nowrap;}
+.funnel-label { width: 210px; flex-shrink:0; font-size: 12px; color: var(--text-dim); text-align:right; font-family: var(--mono);}
+
+.empty-state { text-align:center; padding: 40px 20px; color: var(--text-faint); font-size: 12.5px; }
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:#0a0e14; --panel:#10161f;
+  }
+}
+@media print {
+  #topbar, .no-print { display:none !important; }
+  body { background:#fff; color:#000; }
+  .page { display:block !important; }
+  main { max-width: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 26 26" fill="none">
+          <path d="M13 1L24 7v12L13 25 2 19V7L13 1z" stroke="#2ed3c6" stroke-width="1.4"/>
+          <path d="M13 7v12M8 9.5l10 7M18 9.5L8 16.5" stroke="#2ed3c6" stroke-width="1.1" opacity="0.7"/>
+          <circle cx="13" cy="13" r="2.2" fill="#2ed3c6"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">LEDGERWATCH</div>
+        <div class="brand-sub">TXN-INTEL / v0.9-proto</div>
+      </div>
+    </div>
+    <nav id="tabs">
+      <button data-page="overview" class="active">Overview</button>
+      <button data-page="ingestion">Data Explorer</button>
+      <button data-page="anomaly">Anomaly Detection</button>
+      <button data-page="entity">Entity Intelligence</button>
+      <button data-page="graph">Investigation Graph</button>
+      <button data-page="timeline">Timeline Analysis</button>
+      <button data-page="geo">Geographic Analysis</button>
+      <button data-page="leads">Leads</button>
+      <button data-page="ai">AI Investigator</button>
+      <button data-page="case">Case Workspace</button>
+      <button data-page="reports">Reports</button>
+      <button data-page="architecture">Architecture</button>
+    </nav>
+    <div class="topbar-right">
+      <div class="status-chip"><span class="status-dot"></span>SYNTHETIC DATA</div>
+      <div class="status-chip">Case <span class="mono" id="case-chip-count">0</span></div>
+    </div>
+  </div>
+</div>
+
+<main>
+
+<!-- ============ OVERVIEW ============ -->
+<section class="page active" id="page-overview">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Investigation overview</h1>
+      <div class="page-desc">Cross-layer summary of the loaded synthetic dataset — network sessions, blockchain transactions, and derived investigative signal.</div>
+    </div>
+    <button class="btn primary" onclick="goTo('ingestion')">Load a dataset →</button>
+  </div>
+
+  <div class="section-label">DATASET</div>
+  <div class="grid grid-stats" id="overview-stats"></div>
+
+  <div class="section-label">ALERT SUMMARY</div>
+  <div class="grid grid-alerts" id="overview-alerts"></div>
+
+  <div class="section-label">SIGNAL</div>
+  <div class="grid grid-viz">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Transaction volume over time</span><span class="card-sub">14-day window</span></div>
+      <div class="chart-box"><canvas id="chart-volume"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Anomaly trend</span><span class="card-sub">flags / day</span></div>
+      <div class="chart-box"><canvas id="chart-anomaly-trend"></canvas></div>
+    </div>
+  </div>
+  <div class="grid grid-3" style="margin-top:12px;">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Transaction value distribution</span></div>
+      <div class="chart-box"><canvas id="chart-value-dist"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Network activity by country</span></div>
+      <div class="chart-box"><canvas id="chart-geo-bar"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Top anomalous entities</span></div>
+      <div id="top-anomalous-list"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DATA EXPLORER / INGESTION ============ -->
+<section class="page" id="page-ingestion">
+  <div class="page-head">
+    <div><h1 class="page-title">Data ingestion &amp; explorer</h1>
+    <div class="page-desc">Bring in network and blockchain records, then browse the resolved entity tables.</div></div>
+  </div>
+
+  <div class="tabbed-subnav" id="ingestion-subnav">
+    <button data-sub="upload" class="active">Ingest</button>
+    <button data-sub="explorer">Explorer</button>
+  </div>
+
+  <div id="ingestion-sub-upload">
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><span class="card-title">Upload dataset</span><span class="card-sub">CSV · JSON · XML</span></div>
+        <div class="upload-zone" id="upload-zone" onclick="simulateUpload()">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+          <div>Drop a file or click to simulate loading<br><span class="mono" style="font-size:11px;">btc_netflow_2026Q3.csv · json · xml supported</span></div>
+        </div>
+        <div id="upload-result" style="display:none; margin-top:14px;">
+          <div class="hr"></div>
+          <div class="grid grid-stats" id="upload-file-stats"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Ingestion pipeline</span><span class="card-sub" id="pipeline-status">idle</span></div>
+        <div class="flow-diagram" id="pipeline-flow"></div>
+        <div class="hr"></div>
+        <div class="progress-track"><div class="progress-fill" id="pipeline-progress"></div></div>
+        <div class="callout info" style="margin-top:12px;">
+          <span>ⓘ</span>
+          <span>Records stream through the pipeline in chunks — the full dataset is never loaded into memory at once. See <a onclick="goTo('architecture')" style="text-decoration:underline;cursor:pointer;color:var(--teal)">Architecture</a> for the processing design.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ingestion-sub-explorer" style="display:none;">
+    <div class="filter-bar">
+      <select id="explorer-type" onchange="renderExplorer()">
+        <option value="tx">Transactions</option>
+        <option value="wallet">Wallets</option>
+        <option value="ip">IP sessions</option>
+      </select>
+      <input type="search" id="explorer-search" placeholder="Search ID, address, IP…" oninput="renderExplorer()" style="width:220px;">
+      <select id="explorer-risk" onchange="renderExplorer()">
+        <option value="">All risk levels</option>
+        <option value="CRITICAL">Critical</option>
+        <option value="HIGH">High</option>
+        <option value="MEDIUM">Medium</option>
+        <option value="LOW">Low</option>
+      </select>
+      <div class="spacer"></div>
+      <span class="card-sub" id="explorer-count"></span>
+    </div>
+    <div class="card" style="padding:0;">
+      <div class="table-wrap"><table id="explorer-table"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ANOMALY DETECTION ============ -->
+<section class="page" id="page-anomaly">
+  <div class="page-head">
+    <div><h1 class="page-title">AI anomaly detection</h1>
+    <div class="page-desc">Ensemble output across Isolation Forest, Local Outlier Factor and One-Class SVM. Scores indicate <em>investigative priority</em>, not proof of wrongdoing.</div></div>
+  </div>
+
+  <div class="callout">
+    <span>⚠</span>
+    <span>Prototype/demo output using synthetic data. Anomaly scores flag behavior that warrants investigation — they are not findings of criminal activity.</span>
+  </div>
+
+  <div class="grid grid-3" style="margin-bottom:14px;">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Model ensemble</span></div>
+      <div id="model-ensemble-list"></div>
+    </div>
+    <div class="card" style="grid-column: span 2;">
+      <div class="card-head"><span class="card-title">Anomaly score distribution</span><span class="card-sub">by entity type</span></div>
+      <div class="chart-box"><canvas id="chart-anomaly-scatter"></canvas></div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <select id="anomaly-priority" onchange="renderAnomalyTable()">
+      <option value="">All priorities</option>
+      <option value="CRITICAL">Critical</option>
+      <option value="HIGH">High</option>
+      <option value="MEDIUM">Medium</option>
+      <option value="LOW">Low</option>
+    </select>
+    <select id="anomaly-type" onchange="renderAnomalyTable()">
+      <option value="">All entity types</option>
+      <option value="wallet">Wallet</option>
+      <option value="ip">IP address</option>
+    </select>
+    <div class="spacer"></div>
+    <span class="card-sub" id="anomaly-count"></span>
+  </div>
+  <div class="card" style="padding:0;">
+    <div class="table-wrap"><table id="anomaly-table"></table></div>
+  </div>
+</section>
+
+<!-- ============ ENTITY INTELLIGENCE / CLUSTERING ============ -->
+<section class="page" id="page-entity">
+  <div class="page-head">
+    <div><h1 class="page-title">Entity intelligence &amp; clustering</h1>
+    <div class="page-desc">Simulated DBSCAN / HDBSCAN / K-Means grouping of wallets and IPs into behaviorally related clusters.</div></div>
+    <select id="cluster-algo" onchange="renderClusters()">
+      <option value="hdbscan">HDBSCAN</option>
+      <option value="dbscan">DBSCAN</option>
+      <option value="kmeans">K-Means (k=8)</option>
+    </select>
+  </div>
+  <div class="grid grid-3" id="cluster-grid"></div>
+</section>
+
+<!-- ============ INVESTIGATION GRAPH ============ -->
+<section class="page" id="page-graph">
+  <div class="page-head">
+    <div><h1 class="page-title">Multi-layer investigation graph</h1>
+    <div class="page-desc">IP → network session → transaction → wallet correlation. Select an entity to render its local neighborhood.</div></div>
+  </div>
+  <div class="filter-bar">
+    <select id="graph-entity-type">
+      <option value="wallet">Wallet</option>
+      <option value="ip">IP address</option>
+      <option value="tx">TXID</option>
+    </select>
+    <select id="graph-entity-select"></select>
+    <button class="btn primary small" onclick="loadGraphFor()">Load neighborhood</button>
+    <button class="btn small" onclick="expandGraph()">Expand investigation (+1 hop)</button>
+    <div class="spacer"></div>
+    <input type="search" id="graph-search" placeholder="Search node…" style="width:160px;" onkeydown="if(event.key==='Enter')searchGraphNode()">
+  </div>
+  <div id="graph-wrap">
+    <svg id="graph-svg"></svg>
+    <div class="graph-legend">
+      <div class="item"><span class="legend-dot" style="background:#2ed3c6"></span>Wallet</div>
+      <div class="item"><span class="legend-dot" style="background:#7c93ff"></span>IP address</div>
+      <div class="item"><span class="legend-dot" style="background:#f0ac4b"></span>TXID</div>
+      <div class="item"><span class="legend-dot" style="background:#8493a8"></span>ASN / Country</div>
+    </div>
+    <div class="graph-controls">
+      <button class="btn small" onclick="zoomGraph(1.25)">＋</button>
+      <button class="btn small" onclick="zoomGraph(0.8)">－</button>
+      <button class="btn small" onclick="resetGraphZoom()">Reset</button>
+    </div>
+    <div class="node-panel" id="graph-node-panel"></div>
+  </div>
+  <div class="grid grid-stats" style="margin-top:12px;" id="graph-metrics"></div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section class="page" id="page-timeline">
+  <div class="page-head">
+    <div><h1 class="page-title">Temporal behavior analysis</h1>
+    <div class="page-desc">Transaction frequency and value over time for a selected entity, with behavioral change points highlighted.</div></div>
+  </div>
+  <div class="filter-bar">
+    <select id="timeline-entity"></select>
+    <button class="btn small" onclick="renderTimeline()">Analyze</button>
+  </div>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Transaction frequency</span><span class="card-sub">per day</span></div>
+      <div class="chart-box tall"><canvas id="chart-timeline-freq"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Transaction value</span><span class="card-sub">BTC / day</span></div>
+      <div class="chart-box tall"><canvas id="chart-timeline-value"></canvas></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:12px;" id="timeline-explain"></div>
+</section>
+
+<!-- ============ GEOGRAPHIC ============ -->
+<section class="page" id="page-geo">
+  <div class="page-head">
+    <div><h1 class="page-title">Geographic analysis</h1>
+    <div class="page-desc">IP-derived geolocation of network sessions, correlated with wallet activity across jurisdictions.</div></div>
+  </div>
+  <div class="filter-bar">
+    <select id="geo-country-filter" onchange="renderGeo()"><option value="">All countries</option></select>
+    <select id="geo-anomaly-filter" onchange="renderGeo()">
+      <option value="">All activity</option>
+      <option value="anomalous">Anomalous only</option>
+    </select>
+    <div class="spacer"></div>
+    <span class="card-sub">Geographic diversity is an analytical signal, not proof of wrongdoing.</span>
+  </div>
+  <svg class="world-map" id="world-map" viewBox="0 0 960 460"></svg>
+  <div class="grid grid-2" style="margin-top:12px;">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Sessions by country</span></div>
+      <div class="chart-box"><canvas id="chart-country-bar"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Example cross-border path</span></div>
+      <div id="geo-path-example"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LEADS ============ -->
+<section class="page" id="page-leads">
+  <div class="page-head">
+    <div><h1 class="page-title">Investigative leads</h1>
+    <div class="page-desc">Prioritized, evidence-backed leads generated from anomaly, graph, and temporal signal.</div></div>
+  </div>
+  <div class="filter-bar">
+    <select id="lead-status-filter" onchange="renderLeads()">
+      <option value="">All statuses</option>
+      <option>New</option><option>Under Investigation</option><option>Reviewed</option><option>Dismissed</option><option>Archived</option>
+    </select>
+    <select id="lead-priority-filter" onchange="renderLeads()">
+      <option value="">All priorities</option>
+      <option value="CRITICAL">Critical</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option>
+    </select>
+    <select id="lead-sort" onchange="renderLeads()">
+      <option value="score">Sort: anomaly score</option>
+      <option value="evidence">Sort: evidence count</option>
+      <option value="time">Sort: most recent</option>
+    </select>
+    <div class="spacer"></div>
+    <span class="card-sub" id="lead-count"></span>
+  </div>
+  <div class="card" style="padding:0;">
+    <div class="table-wrap"><table id="leads-table"></table></div>
+  </div>
+</section>
+
+<!-- ============ AI INVESTIGATOR ============ -->
+<section class="page" id="page-ai">
+  <div class="page-head">
+    <div><h1 class="page-title">AI Investigator</h1>
+    <div class="page-desc">Ask about any flagged entity. Answers are analytical summaries drawn from the data on screen — not conclusions about criminal activity.</div></div>
+  </div>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Conversation</span><span class="card-sub" id="ai-context-chip">context: none selected</span></div>
+      <div class="chat-window" id="chat-window"></div>
+      <div class="chat-suggestions" id="chat-suggestions"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Ask about a wallet, IP, or investigation…" onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="btn primary" onclick="sendChat()">Ask</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Investigation context</span></div>
+      <label class="card-sub" style="display:block;margin-bottom:6px;">Focus entity</label>
+      <select id="ai-entity-select" onchange="setAiContext()" style="width:100%; margin-bottom: 14px;"></select>
+      <div id="ai-context-panel"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CASE WORKSPACE ============ -->
+<section class="page" id="page-case">
+  <div class="page-head">
+    <div><h1 class="page-title">Investigation workspace</h1>
+    <div class="page-desc">Assemble entities, evidence and analyst notes into a single working case file.</div></div>
+    <button class="btn primary" onclick="openCaseModal()">+ New case</button>
+  </div>
+  <div id="case-empty" class="empty-state" style="display:none;">No case open yet. Create one, then use "Add to case" throughout the platform to attach entities and evidence.</div>
+  <div id="case-content" style="display:none;">
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><span class="card-title" id="case-title-display">CASE</span><span class="pill neutral" id="case-id-display"></span></div>
+        <div id="case-meta"></div>
+        <div class="hr"></div>
+        <div class="card-sub" style="margin-bottom:8px;">Entities</div>
+        <div class="chip-row" id="case-entities"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Evidence</span></div>
+        <div id="case-evidence"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <div class="card-head"><span class="card-title">Analyst notes</span></div>
+      <textarea id="case-notes" rows="5" style="width:100%;" placeholder="Add investigator notes…" oninput="saveCaseNotes()"></textarea>
+    </div>
+    <div style="margin-top:14px; display:flex; gap:10px;">
+      <button class="btn primary" onclick="goTo('reports')">Generate investigation report →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REPORTS ============ -->
+<section class="page" id="page-reports">
+  <div class="page-head">
+    <div><h1 class="page-title">Report generation</h1>
+    <div class="page-desc">Compile the current case into an exportable investigation report.</div></div>
+  </div>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Report contents</span></div>
+      <ul style="margin:0; padding-left:18px; color:var(--text-dim); font-size:12.5px; line-height:2;">
+        <li>Case ID &amp; investigation summary</li>
+        <li>Entities analyzed</li>
+        <li>Anomaly findings &amp; explainability</li>
+        <li>Graph relationships</li>
+        <li>Timeline of behavioral change</li>
+        <li>Geographic information</li>
+        <li>Supporting transactions</li>
+        <li>Analyst notes</li>
+      </ul>
+      <div class="hr"></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn primary" onclick="generateReport('pdf')">Generate PDF (print)</button>
+        <button class="btn" onclick="generateReport('json')">Export JSON</button>
+        <button class="btn" onclick="generateReport('csv')">Export CSV</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Live preview</span></div>
+      <div id="report-preview" class="mono" style="font-size:11.5px; white-space:pre-wrap; max-height:420px; overflow-y:auto; color:var(--text-dim);"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section class="page" id="page-architecture">
+  <div class="page-head">
+    <div><h1 class="page-title">Technical architecture</h1>
+    <div class="page-desc">How raw network and blockchain records are reduced to a small set of explainable investigative leads.</div></div>
+  </div>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Processing pipeline</span></div>
+      <div class="arch-flow" id="arch-flow"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Data reduction funnel</span><span class="card-sub">example run</span></div>
+      <div id="arch-funnel" style="margin-top:10px;"></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:12px;">
+    <div class="card-head"><span class="card-title">Design notes</span></div>
+    <div class="grid grid-3">
+      <div>
+        <div class="card-sub" style="margin-bottom:6px;">INGESTION</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">Chunked readers stream CSV/JSON/XML through DuckDB and Polars — the full file is never materialized in memory, enabling multi-million-row datasets on commodity hardware.</div>
+      </div>
+      <div>
+        <div class="card-sub" style="margin-bottom:6px;">FEATURE ENGINE</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">Behavioral, temporal, network and graph features are computed per entity and stored in Parquet for columnar re-use across models.</div>
+      </div>
+      <div>
+        <div class="card-sub" style="margin-bottom:6px;">INTELLIGENCE ENGINE</div>
+        <div style="font-size:12.5px;color:var(--text-dim);">Anomaly ensembles, clustering and graph analytics feed a prioritization layer that outputs ranked, explainable leads only.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div class="modal-backdrop" id="entity-modal-backdrop">
+  <div class="modal" id="entity-modal-content"></div>
+</div>
+
+<div class="modal-backdrop" id="case-modal-backdrop">
+  <div class="modal" id="case-modal-content"></div>
+</div>
+
+<script>
+/* =========================================================================
+   LEDGERWATCH — synthetic data generation
+   ========================================================================= */
+(function(){
+
+function seededRandom(seed){
+  let s = seed % 2147483647; if (s<=0) s += 2147483646;
+  return function(){ s = (s*16807) % 2147483647; return (s-1)/2147483646; };
+}
+const rnd = seededRandom(42);
+function ri(a,b){ return Math.floor(rnd()*(b-a+1))+a; }
+function rf(a,b,d=2){ return +(rnd()*(b-a)+a).toFixed(d); }
+function choice(arr){ return arr[Math.floor(rnd()*arr.length)]; }
+function hexChars(n){ const c='0123456789abcdef'; let s=''; for(let i=0;i<n;i++) s+=choice(c.split('')); return s; }
+
+const COUNTRIES = [
+  {code:'US', name:'United States', lat:38.9, lon:-77.0},
+  {code:'IN', name:'India', lat:28.6, lon:77.2},
+  {code:'SG', name:'Singapore', lat:1.35, lon:103.8},
+  {code:'DE', name:'Germany', lat:52.5, lon:13.4},
+  {code:'RU', name:'Russia', lat:55.75, lon:37.6},
+  {code:'NG', name:'Nigeria', lat:9.08, lon:7.4},
+  {code:'BR', name:'Brazil', lat:-15.8, lon:-47.9},
+  {code:'VN', name:'Vietnam', lat:21.0, lon:105.8},
+  {code:'NL', name:'Netherlands', lat:52.1, lon:5.3},
+  {code:'AE', name:'UAE', lat:24.5, lon:54.4},
+  {code:'GB', name:'United Kingdom', lat:51.5, lon:-0.12},
+  {code:'JP', name:'Japan', lat:35.7, lon:139.7},
+  {code:'UA', name:'Ukraine', lat:50.45, lon:30.5},
+  {code:'ZA', name:'South Africa', lat:-25.7, lon:28.2},
+];
+const ASNS = ['AS7018-ATT','AS16509-AMZN','AS8075-MSFT','AS24940-Hetzner','AS9009-M247','AS14061-DigitalOcean','AS16276-OVH','AS55836-Reliance','AS4837-CNC','AS20473-Vultr'];
+const SCRIPT_TYPES = ['P2PKH','P2SH','P2WPKH','P2WSH','P2TR'];
+
+function randIP(){ return `${ri(1,223)}.${ri(0,255)}.${ri(0,255)}.${ri(1,254)}`; }
+function randWallet(){ return 'bc1q'+hexChars(8)+'…'+hexChars(4); }
+function randTxid(){ return hexChars(10)+'…'+hexChars(6); }
+
+const N_WALLETS = 42, N_IPS = 34, N_TX = 140;
+
+const wallets = [];
+for(let i=0;i<N_WALLETS;i++){
+  wallets.push({ id: 'W'+(1000+i), addr: randWallet(), type:'wallet' });
+}
+const ips = [];
+for(let i=0;i<N_IPS;i++){
+  const country = choice(COUNTRIES);
+  ips.push({ id:'IP'+(200+i), addr: randIP(), country: country.code, asn: choice(ASNS), type:'ip' });
+}
+const txs = [];
+const now = new Date('2026-09-24T00:00:00Z');
+for(let i=0;i<N_TX;i++){
+  const day = ri(0,13);
+  const ts = new Date(now.getTime() - day*86400000 - ri(0,86399)*1000);
+  const nIn = ri(1,3), nOut = ri(1,3);
+  const ins = Array.from({length:nIn}, ()=>choice(wallets).id);
+  const outs = Array.from({length:nOut}, ()=>choice(wallets).id);
+  const amt = rf(0.001, 12, 4);
+  txs.push({
+    id: 'TX'+(1000+i), txid: randTxid(), ts,
+    inputs: ins, outputs: outs,
+    inputAmounts: ins.map(()=>rf(0.001,6,4)),
+    outputAmounts: outs.map(()=>rf(0.001,6,4)),
+    amount: amt, fee: rf(0.00001,0.0009,6),
+    scriptType: choice(SCRIPT_TYPES),
+    ip: choice(ips).id,
+  });
+}
+
+// designate hero anomalous wallets deterministically
+const HERO_ANOMALOUS = ['W1042','W1291','W1390']; // display ids remapped below
+// Remap first three wallets to nicer canonical IDs used throughout the brief
+wallets[0].id = 'W8291'; wallets[0].hero = true;
+wallets[1].id = 'W1042';
+wallets[2].id = 'W3390';
+// fix tx references that pointed at old ids W1000/W1001/W1002
+txs.forEach(t=>{
+  t.inputs = t.inputs.map(id => id==='W1000'?'W8291': id==='W1001'?'W1042': id==='W1002'?'W3390': id);
+  t.outputs = t.outputs.map(id => id==='W1000'?'W8291': id==='W1001'?'W1042': id==='W1002'?'W3390': id);
+});
+
+// give W8291 a burst of recent, high-velocity, high-diversity activity
+const heroCounterparties = new Set();
+const heroIPs = new Set();
+for(let i=0;i<40;i++){
+  const day = i<28 ? ri(6,13) : ri(0,2); // baseline vs spike window
+  const ts = new Date(now.getTime() - day*86400000 - ri(0,86399)*1000);
+  const cp = choice(wallets.filter(w=>w.id!=='W8291')).id;
+  heroCounterparties.add(cp);
+  const ip = choice(ips).id; heroIPs.add(ip);
+  txs.push({
+    id:'TX'+(2000+i), txid: randTxid(), ts,
+    inputs:['W8291'], outputs:[cp],
+    inputAmounts:[rf(0.01,3,4)], outputAmounts:[rf(0.01,3,4)],
+    amount: rf(0.01,3,4), fee: rf(0.00001,0.0009,6),
+    scriptType: choice(SCRIPT_TYPES), ip,
+    heroFlow: i>=28,
+  });
+}
+txs.sort((a,b)=>a.ts-b.ts);
+
+/* ---- derive per-wallet stats ---- */
+function walletStats(wid){
+  const related = txs.filter(t=>t.inputs.includes(wid) || t.outputs.includes(wid));
+  const counterparties = new Set();
+  const ipsSet = new Set();
+  const countriesSet = new Set();
+  related.forEach(t=>{
+    [...t.inputs, ...t.outputs].forEach(w=>{ if(w!==wid) counterparties.add(w); });
+    if(t.ip){ ipsSet.add(t.ip); const ipObj = ips.find(x=>x.id===t.ip); if(ipObj) countriesSet.add(ipObj.country); }
+  });
+  const last3 = related.filter(t=> (now-t.ts) < 3*86400000).length;
+  const prior11 = related.filter(t=> (now-t.ts) >= 3*86400000 && (now-t.ts) < 14*86400000).length;
+  const baselineRate = prior11/11 || 0.15;
+  const recentRate = last3/3;
+  const velocityRatio = +(recentRate / (baselineRate||0.05)).toFixed(1);
+  return { txCount: related.length, counterparties: counterparties.size, ipCount: ipsSet.size, countryCount: countriesSet.size, velocityRatio, related };
+}
+
+function ipStats(ipId){
+  const related = txs.filter(t=>t.ip===ipId);
+  const walletsSet = new Set();
+  related.forEach(t=>{ [...t.inputs,...t.outputs].forEach(w=>walletsSet.add(w)); });
+  return { txCount: related.length, walletCount: walletsSet.size, related };
+}
+
+/* ---- anomaly scoring (simulated ensemble) ---- */
+const entities = [];
+wallets.forEach(w=>{
+  const st = walletStats(w.id);
+  let score;
+  if (w.id==='W8291') score = 0.91;
+  else if (w.id==='W1042') score = 0.78;
+  else if (w.id==='W3390') score = 0.67;
+  else score = Math.min(0.95, Math.max(0.04, (st.velocityRatio/12) + (st.counterparties/90) + (st.ipCount/40) + rf(-0.05,0.08,3)));
+  const priority = score>=0.85?'CRITICAL': score>=0.65?'HIGH': score>=0.4?'MEDIUM':'LOW';
+  entities.push({
+    id:w.id, type:'wallet', score:+score.toFixed(2), priority,
+    txCount: st.txCount, counterparties: st.counterparties, ipCount: st.ipCount, countryCount: st.countryCount,
+    velocityRatio: st.velocityRatio || rf(0.8,2.2,1),
+    centrality: +(score*rf(0.7,1,2)).toFixed(2),
+    related: st.related,
+  });
+});
+ips.forEach(ip=>{
+  const st = ipStats(ip.id);
+  let score = Math.min(0.9, Math.max(0.03, (st.walletCount/25) + rf(-0.05,0.15,3)));
+  if (ip.id==='IP200') score = 0.72;
+  const priority = score>=0.85?'CRITICAL': score>=0.65?'HIGH': score>=0.4?'MEDIUM':'LOW';
+  entities.push({
+    id:ip.id, type:'ip', score:+score.toFixed(2), priority,
+    txCount: st.txCount, counterparties: st.walletCount, ipCount:1, countryCount:1,
+    velocityRatio: rf(0.8,3,1), centrality: +(score*0.8).toFixed(2), related: st.related,
+  });
+});
+entities.sort((a,b)=>b.score-a.score);
+
+function entityById(id){ return entities.find(e=>e.id===id); }
+function walletById(id){ return wallets.find(w=>w.id===id); }
+function ipById(id){ return ips.find(i=>i.id===id); }
+
+/* ---- explainability reasons ---- */
+function reasonsFor(ent){
+  const r = [];
+  if (ent.velocityRatio > 2) r.push(`Transaction velocity increased approximately ${ent.velocityRatio}× compared with the preceding baseline.`);
+  if (ent.counterparties > 15) r.push(`${ent.counterparties} unique counterparties observed, well above typical peer entities.`);
+  if (ent.ipCount > 8) r.push(`${ent.ipCount} distinct IP addresses associated with this entity's transaction activity.`);
+  if (ent.countryCount > 2) r.push(`Geographic diversity spans ${ent.countryCount} countries within the observation window.`);
+  if (ent.centrality > 0.5) r.push(`Graph centrality is higher than 90% of comparable entities in the correlation graph.`);
+  if (ent.type==='ip') r.push(`Session fan-out to ${ent.counterparties} distinct wallets from a single network origin.`);
+  if (r.length===0) r.push('No strong contributing signals — behavior consistent with baseline peer entities.');
+  return r;
+}
+
+/* ---- clusters (simulated) ---- */
+function buildClusters(algo){
+  const n = algo==='kmeans'? 8 : algo==='dbscan'? 5 : 6;
+  const clusters = [];
+  const pool = [...wallets.map(w=>w.id), ...ips.map(i=>i.id)];
+  for(let i=0;i<n;i++){
+    const size = ri(4, 14);
+    const members = [];
+    for(let j=0;j<size;j++) members.push(choice(pool));
+    const uniqueMembers = [...new Set(members)];
+    const walletMembers = uniqueMembers.filter(m=>m.startsWith('W'));
+    const ipMembers = uniqueMembers.filter(m=>m.startsWith('IP'));
+    const countriesSet = new Set(ipMembers.map(id=>ipById(id)?.country).filter(Boolean));
+    const anomalous = uniqueMembers.filter(m=> (entityById(m)?.score||0) > 0.6);
+    clusters.push({
+      id: 'C-'+(10+i),
+      algo,
+      wallets: walletMembers.length, ips: ipMembers.length,
+      countries: countriesSet.size || ri(1,4),
+      members: uniqueMembers,
+      anomalous,
+      volume: rf(2,180,2),
+      dominant: choice(['fan-out payment pattern','round-trip circular flow','rapid consolidation','peer-swarm mixing behavior','staggered micro-transfers']),
+    });
+  }
+  return clusters;
+}
+
+window.LW = {
+  COUNTRIES, wallets, ips, txs, entities, entityById, walletById, ipById, reasonsFor, buildClusters, now, walletStats, ipStats,
+};
+})();
+</script>
+<script>
+/* =========================================================================
+   Navigation
+   ========================================================================= */
+let currentCase = null;
+let aiContextEntity = null;
+let chartRefs = {};
+
+function goTo(page){
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.page===page));
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active', p.id==='page-'+page));
+  window.scrollTo({top:0, behavior:'instant'});
+  if (page==='overview') renderOverview();
+  if (page==='anomaly') renderAnomalyPage();
+  if (page==='entity') renderClusters();
+  if (page==='graph') renderGraphPage();
+  if (page==='timeline') renderTimelinePage();
+  if (page==='geo') renderGeoPage();
+  if (page==='leads') renderLeads();
+  if (page==='ai') renderAiPage();
+  if (page==='case') renderCase();
+  if (page==='reports') generateReport('preview');
+  if (page==='architecture') renderArchitecture();
+}
+document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click', ()=>goTo(b.dataset.page)));
+
+document.querySelectorAll('#ingestion-subnav button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#ingestion-subnav button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('ingestion-sub-upload').style.display = b.dataset.sub==='upload'?'block':'none';
+    document.getElementById('ingestion-sub-explorer').style.display = b.dataset.sub==='explorer'?'block':'none';
+    if (b.dataset.sub==='explorer') renderExplorer();
+  });
+});
+
+function priorityPill(p){
+  const cls = p==='CRITICAL'?'crit':p==='HIGH'?'high':p==='MEDIUM'?'med':'low';
+  return `<span class="pill ${cls}">${p}</span>`;
+}
+function fmtDate(d){ return d.toISOString().slice(0,16).replace('T',' '); }
+function fmtDay(d){ return d.toISOString().slice(5,10); }
+
+/* =========================================================================
+   OVERVIEW
+   ========================================================================= */
+function renderOverview(){
+  const E = window.LW.entities, TX = window.LW.txs;
+  const stats = [
+    ['Total transactions (loaded sample)', TX.length.toLocaleString()],
+    ['Full dataset — transactions', '10,482,003'],
+    ['Unique wallets', window.LW.wallets.length + ' (500,214 full set)'],
+    ['Unique IP addresses', window.LW.ips.length + ' (81,940 full set)'],
+    ['Unique TXIDs', TX.length + ' (10,482,003 full set)'],
+    ['Countries observed', new Set(window.LW.ips.map(i=>i.country)).size],
+    ['ASNs observed', new Set(window.LW.ips.map(i=>i.asn)).size],
+    ['Dataset size', '4.2 GB (raw) → 380 MB (Parquet)'],
+  ];
+  document.getElementById('overview-stats').innerHTML = stats.map(([l,v])=>`
+    <div class="card stat-card"><div class="stat-label">${l}</div><div class="stat-value" style="font-size:17px;">${v}</div></div>`).join('');
+
+  const crit = E.filter(e=>e.priority==='CRITICAL').length;
+  const high = E.filter(e=>e.priority==='HIGH').length;
+  const med = E.filter(e=>e.priority==='MEDIUM').length;
+  const low = E.filter(e=>e.priority==='LOW').length;
+  const alerts = [
+    ['crit','Critical leads', crit],
+    ['high','High priority', high],
+    ['med','Medium priority', med],
+    ['low','Low priority', low],
+    ['new','New anomalies (24h)', ri3(2,6)],
+    ['cluster','Emerging clusters', ri3(1,4)],
+  ];
+  document.getElementById('overview-alerts').innerHTML = alerts.map(([c,l,v])=>`
+    <div class="card alert-card ${c}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`).join('');
+
+  renderVolumeChart(); renderAnomalyTrendChart(); renderValueDistChart(); renderGeoBarChart();
+
+  const top = E.slice(0,5);
+  document.getElementById('top-anomalous-list').innerHTML = top.map(e=>`
+    <div class="row-link" style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--border-soft); cursor:pointer;" onclick="openEntityModal('${e.id}')">
+      <span class="${e.type==='wallet'?'entity-id':'ip-id'}">${e.id}</span>
+      <span style="display:flex; gap:8px; align-items:center;"><span class="mono" style="font-size:11px;color:var(--text-dim);">${e.score}</span>${priorityPill(e.priority)}</span>
+    </div>`).join('');
+}
+function ri3(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+
+function renderVolumeChart(){
+  const ctx = document.getElementById('chart-volume');
+  const days = [...Array(14)].map((_,i)=>{ const d=new Date(window.LW.now.getTime()-(13-i)*86400000); return fmtDay(d); });
+  const counts = days.map((_,i)=>{
+    const dayStart = new Date(window.LW.now.getTime()-(13-i)*86400000); dayStart.setUTCHours(0,0,0,0);
+    const dayEnd = new Date(dayStart.getTime()+86400000);
+    return window.LW.txs.filter(t=>t.ts>=dayStart && t.ts<dayEnd).length;
+  });
+  destroyChart('volume');
+  chartRefs.volume = new Chart(ctx, { type:'line', data:{ labels:days, datasets:[{ data:counts, borderColor:'#2ed3c6', backgroundColor:'rgba(46,211,198,0.08)', fill:true, tension:0.3, pointRadius:0, borderWidth:2 }]},
+    options: baseChartOpts(false) });
+}
+function renderAnomalyTrendChart(){
+  const ctx = document.getElementById('chart-anomaly-trend');
+  const days = [...Array(14)].map((_,i)=>{ const d=new Date(window.LW.now.getTime()-(13-i)*86400000); return fmtDay(d); });
+  const counts = days.map((_,i)=> i<10? ri3(0,3): ri3(3,9));
+  destroyChart('anomalyTrend');
+  chartRefs.anomalyTrend = new Chart(ctx, { type:'bar', data:{ labels:days, datasets:[{ data:counts, backgroundColor: counts.map(c=>c>4?'#ff6b5c':'#f0ac4b') }]},
+    options: baseChartOpts(false) });
+}
+function renderValueDistChart(){
+  const ctx = document.getElementById('chart-value-dist');
+  const buckets = ['0-0.01','0.01-0.1','0.1-0.5','0.5-1','1-3','3-6','6+'];
+  const counts = [0,0,0,0,0,0,0];
+  window.LW.txs.forEach(t=>{
+    const a=t.amount;
+    const idx = a<0.01?0:a<0.1?1:a<0.5?2:a<1?3:a<3?4:a<6?5:6;
+    counts[idx]++;
+  });
+  destroyChart('valueDist');
+  chartRefs.valueDist = new Chart(ctx, { type:'bar', data:{ labels:buckets, datasets:[{data:counts, backgroundColor:'#7c93ff'}]}, options: baseChartOpts(false) });
+}
+function renderGeoBarChart(){
+  const ctx = document.getElementById('chart-geo-bar');
+  const counts = {};
+  window.LW.ips.forEach(ip=>{ counts[ip.country]=(counts[ip.country]||0); });
+  window.LW.txs.forEach(t=>{ const ip=window.LW.ipById(t.ip); if(ip) counts[ip.country]=(counts[ip.country]||0)+1; });
+  const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,7);
+  destroyChart('geoBar');
+  chartRefs.geoBar = new Chart(ctx, { type:'bar', data:{ labels:entries.map(e=>e[0]), datasets:[{data:entries.map(e=>e[1]), backgroundColor:'#2ed3c6'}]},
+    options: {...baseChartOpts(false), indexAxis:'y'} });
+}
+function destroyChart(key){ if(chartRefs[key]){ chartRefs[key].destroy(); delete chartRefs[key]; } }
+function baseChartOpts(showLegend){
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:!!showLegend}, tooltip:{backgroundColor:'#141b26', borderColor:'#202a38', borderWidth:1, titleFont:{family:'IBM Plex Mono'}, bodyFont:{family:'IBM Plex Mono'}} },
+    scales:{ x:{ grid:{color:'#1a222e'}, ticks:{color:'#8493a8', font:{size:10}} }, y:{ grid:{color:'#1a222e'}, ticks:{color:'#8493a8', font:{size:10}}, beginAtZero:true } }
+  };
+}
+
+/* =========================================================================
+   INGESTION
+   ========================================================================= */
+const PIPELINE_STEPS = ['Raw data','Validation','Normalization','Deduplication','Entity resolution','Feature engineering','AI analysis'];
+function renderPipelineFlow(activeIdx){
+  document.getElementById('pipeline-flow').innerHTML = PIPELINE_STEPS.map((s,i)=>{
+    const cls = i<activeIdx?'done': i===activeIdx?'active':'';
+    const arrow = i<PIPELINE_STEPS.length-1 ? '<div class="flow-arrow">↓</div>':'';
+    return `<div class="flow-step ${cls}">${s}</div>${arrow}`;
+  }).join('');
+}
+renderPipelineFlow(-1);
+
+let uploading = false;
+function simulateUpload(){
+  if (uploading) return;
+  uploading = true;
+  document.getElementById('pipeline-status').textContent = 'processing…';
+  document.getElementById('upload-result').style.display='none';
+  let step = 0;
+  const progress = document.getElementById('pipeline-progress');
+  progress.style.width='0%';
+  renderPipelineFlow(0);
+  const interval = setInterval(()=>{
+    step++;
+    renderPipelineFlow(step);
+    progress.style.width = Math.min(100, (step/PIPELINE_STEPS.length)*100)+'%';
+    if (step >= PIPELINE_STEPS.length){
+      clearInterval(interval);
+      document.getElementById('pipeline-status').textContent = 'complete';
+      uploading = false;
+      showUploadResult();
+    }
+  }, 480);
+}
+function showUploadResult(){
+  const fields = ['timestamp','src_ip','dst_ip','src_port','dst_port','geo_country','ASN','txid','input_addresses','output_addresses','fee','script_type'];
+  const stats = [
+    ['File', 'btc_netflow_2026Q3.csv'],
+    ['Size', '4.2 GB'],
+    ['Records', '10,482,003'],
+    ['Fields detected', fields.length],
+    ['Data quality', '98.4%'],
+    ['Missing values', '1.2%'],
+    ['Duplicate records', '0.6% (62,891)'],
+    ['Status', 'Ready for analysis'],
+  ];
+  document.getElementById('upload-file-stats').innerHTML = stats.map(([l,v])=>`
+    <div class="card stat-card" style="background:var(--panel-2);"><div class="stat-label">${l}</div><div class="stat-value" style="font-size:14.5px;">${v}</div></div>`).join('');
+  document.getElementById('upload-result').style.display='block';
+}
+
+/* ---- explorer table ---- */
+function renderExplorer(){
+  const type = document.getElementById('explorer-type').value;
+  const q = document.getElementById('explorer-search').value.toLowerCase();
+  const riskFilter = document.getElementById('explorer-risk').value;
+  const table = document.getElementById('explorer-table');
+  let rows = [];
+  if (type==='tx'){
+    rows = window.LW.txs.filter(t => !q || t.id.toLowerCase().includes(q) || t.txid.toLowerCase().includes(q));
+    table.innerHTML = `<tr><th>TXID</th><th>Timestamp</th><th>Inputs</th><th>Outputs</th><th>Amount (BTC)</th><th>Fee</th><th>Script</th><th>IP</th></tr>` +
+      rows.slice(0,60).map(t=>`<tr class="row-link" onclick="openTxModal('${t.id}')">
+        <td class="tx-id">${t.id}</td><td class="mono">${fmtDate(t.ts)}</td>
+        <td class="entity-id">${t.inputs.join(', ')}</td><td class="entity-id">${t.outputs.join(', ')}</td>
+        <td class="mono">${t.amount}</td><td class="mono">${t.fee}</td><td>${t.scriptType}</td><td class="ip-id">${t.ip}</td></tr>`).join('');
+  } else if (type==='wallet'){
+    rows = window.LW.entities.filter(e=>e.type==='wallet' && (!riskFilter || e.priority===riskFilter) && (!q || e.id.toLowerCase().includes(q)));
+    table.innerHTML = `<tr><th>Wallet</th><th>Tx count</th><th>Counterparties</th><th>IPs linked</th><th>Countries</th><th>Anomaly score</th><th>Priority</th></tr>` +
+      rows.slice(0,60).map(e=>`<tr class="row-link" onclick="openEntityModal('${e.id}')">
+        <td class="entity-id">${e.id}</td><td class="mono">${e.txCount}</td><td class="mono">${e.counterparties}</td>
+        <td class="mono">${e.ipCount}</td><td class="mono">${e.countryCount}</td><td class="mono">${e.score}</td><td>${priorityPill(e.priority)}</td></tr>`).join('');
+  } else {
+    rows = window.LW.entities.filter(e=>e.type==='ip' && (!riskFilter || e.priority===riskFilter) && (!q || e.id.toLowerCase().includes(q)));
+    table.innerHTML = `<tr><th>IP entity</th><th>Address</th><th>Country</th><th>ASN</th><th>Wallets linked</th><th>Anomaly score</th><th>Priority</th></tr>` +
+      rows.slice(0,60).map(e=>{ const ip=window.LW.ipById(e.id); return `<tr class="row-link" onclick="openEntityModal('${e.id}')">
+        <td class="ip-id">${e.id}</td><td class="mono">${ip.addr}</td><td>${ip.country}</td><td class="mono" style="font-size:11px;">${ip.asn}</td>
+        <td class="mono">${e.counterparties}</td><td class="mono">${e.score}</td><td>${priorityPill(e.priority)}</td></tr>`; }).join('');
+  }
+  document.getElementById('explorer-count').textContent = rows.length + ' records';
+}
+</script>
+<script>
+/* =========================================================================
+   ANOMALY DETECTION
+   ========================================================================= */
+function renderAnomalyPage(){
+  document.getElementById('model-ensemble-list').innerHTML = [
+    ['Isolation Forest', 'contamination=0.08', '0.88 AUC (sim)'],
+    ['Local Outlier Factor', 'n_neighbors=20', '0.84 AUC (sim)'],
+    ['One-Class SVM', 'nu=0.06, rbf kernel', '0.81 AUC (sim)'],
+  ].map(([n,cfg,perf])=>`
+    <div style="padding:9px 0; border-bottom:1px solid var(--border-soft);">
+      <div style="display:flex; justify-content:space-between;"><span style="font-size:12.5px;">${n}</span><span class="pill info">${perf}</span></div>
+      <div class="mono" style="font-size:10.5px; color:var(--text-faint); margin-top:2px;">${cfg}</div>
+    </div>`).join('') + `<div style="font-size:11px; color:var(--text-faint); margin-top:8px;">Ensemble score = weighted mean of normalized outputs. Simulated for this prototype.</div>`;
+
+  renderAnomalyScatter();
+  renderAnomalyTable();
+}
+function renderAnomalyScatter(){
+  const ctx = document.getElementById('chart-anomaly-scatter');
+  const wallets = window.LW.entities.filter(e=>e.type==='wallet').map(e=>({x:e.counterparties, y:e.score}));
+  const ipsD = window.LW.entities.filter(e=>e.type==='ip').map(e=>({x:e.counterparties, y:e.score}));
+  destroyChart('anomalyScatter');
+  chartRefs.anomalyScatter = new Chart(ctx, { type:'scatter', data:{ datasets:[
+    {label:'Wallets', data:wallets, backgroundColor:'#2ed3c6'},
+    {label:'IP addresses', data:ipsD, backgroundColor:'#7c93ff'},
+  ]}, options:{...baseChartOpts(true), scales:{ x:{ title:{display:true, text:'counterparties', color:'#8493a8'}, grid:{color:'#1a222e'}, ticks:{color:'#8493a8'} }, y:{ title:{display:true, text:'anomaly score', color:'#8493a8'}, grid:{color:'#1a222e'}, ticks:{color:'#8493a8'}, min:0, max:1 } }} });
+}
+function renderAnomalyTable(){
+  const p = document.getElementById('anomaly-priority').value;
+  const t = document.getElementById('anomaly-type').value;
+  let rows = window.LW.entities.filter(e=> (!p || e.priority===p) && (!t || e.type===t) && e.score>0.15);
+  document.getElementById('anomaly-count').textContent = rows.length + ' flagged entities';
+  document.getElementById('anomaly-table').innerHTML = `<tr><th>Entity</th><th>Type</th><th>Score</th><th>Priority</th><th>Velocity ×</th><th>Counterparties</th><th>IPs</th><th>Countries</th><th></th></tr>` +
+    rows.map(e=>`<tr class="row-link" onclick="openEntityModal('${e.id}')">
+      <td class="${e.type==='wallet'?'entity-id':'ip-id'}">${e.id}</td><td>${e.type==='wallet'?'Wallet':'IP address'}</td>
+      <td class="mono">${e.score}</td><td>${priorityPill(e.priority)}</td><td class="mono">${e.velocityRatio}×</td>
+      <td class="mono">${e.counterparties}</td><td class="mono">${e.ipCount}</td><td class="mono">${e.countryCount}</td>
+      <td><button class="btn small" onclick="event.stopPropagation(); openEntityModal('${e.id}')">Investigate</button></td></tr>`).join('');
+}
+
+/* =========================================================================
+   CLUSTERING
+   ========================================================================= */
+let currentClusters = [];
+function renderClusters(){
+  const algo = document.getElementById('cluster-algo')?.value || 'hdbscan';
+  currentClusters = window.LW.buildClusters(algo);
+  document.getElementById('cluster-grid').innerHTML = currentClusters.map(c=>`
+    <div class="card">
+      <div class="card-head"><span class="card-title">Cluster ${c.id}</span><span class="pill neutral">${c.algo.toUpperCase()}</span></div>
+      <div class="grid grid-stats" style="grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px;">
+        <div><div class="stat-label" style="font-size:10px;">Wallets</div><div class="mono" style="font-size:16px;">${c.wallets}</div></div>
+        <div><div class="stat-label" style="font-size:10px;">IPs</div><div class="mono" style="font-size:16px;">${c.ips}</div></div>
+        <div><div class="stat-label" style="font-size:10px;">Countries</div><div class="mono" style="font-size:16px;">${c.countries}</div></div>
+      </div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Dominant behavior: <strong style="color:var(--text);">${c.dominant}</strong></div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Transaction volume: <span class="mono">${c.volume} BTC</span></div>
+      <div style="font-size:11px; color:var(--text-faint); margin-bottom:6px;">${c.anomalous.length} high-anomaly ${c.anomalous.length===1?'entity':'entities'}</div>
+      <div class="chip-row">${c.members.slice(0,8).map(m=>`<span class="chip" style="cursor:pointer;" onclick="openEntityModal('${m}')">${m}</span>`).join('')}${c.members.length>8?`<span class="chip">+${c.members.length-8}</span>`:''}</div>
+    </div>`).join('');
+}
+
+/* =========================================================================
+   ENTITY MODAL (explainable AI panel)
+   ========================================================================= */
+function openEntityModal(id){
+  const e = window.LW.entityById(id);
+  if (!e){ return; }
+  const reasons = window.LW.reasonsFor(e);
+  const evidence = e.related.slice(0,6);
+  const modal = document.getElementById('entity-modal-content');
+  modal.innerHTML = `
+    <button class="modal-close" onclick="closeModal('entity-modal-backdrop')">✕</button>
+    <h2>Investigative lead — <span class="${e.type==='wallet'?'entity-id':'ip-id'}">${e.id}</span></h2>
+    <div class="modal-sub">Entity type: ${e.type==='wallet'?'Wallet':'IP address'} · Anomaly score ${e.score} · ${e.priority} priority</div>
+    <div class="callout"><span>⚠</span><span>This is an investigative lead based on simulated model output, not a finding of criminal activity.</span></div>
+    <div class="section-label" style="margin-top:0;">WHY WAS THIS ENTITY FLAGGED?</div>
+    <ul class="reason-list">${reasons.map((r,i)=>`<li><span class="reason-num">${i+1}</span><span>${r}</span></li>`).join('')}</ul>
+    <div class="section-label">CONTRIBUTING FEATURES</div>
+    ${featureBars(e)}
+    <div class="section-label">EVIDENCE (${e.related.length} transactions)</div>
+    <div class="chip-row">${evidence.map(t=>`<span class="chip">${t.id}</span>`).join('')}${e.related.length>6?`<span class="chip">+${e.related.length-6} more</span>`:''}</div>
+    <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+      <button class="btn" onclick="closeModal('entity-modal-backdrop'); goTo('graph'); setTimeout(()=>loadGraphForEntity('${e.id}','${e.type}'),50);">View evidence graph</button>
+      <button class="btn" onclick="closeModal('entity-modal-backdrop'); goTo('timeline'); setTimeout(()=>selectTimelineEntity('${e.id}'),50);">View timeline</button>
+      <button class="btn primary" onclick="addToCase('${e.id}','${e.type}')">Add to case</button>
+      <button class="btn" onclick="closeModal('entity-modal-backdrop'); goTo('ai'); setTimeout(()=>setAiContextTo('${e.id}'),50);">Ask AI Investigator</button>
+    </div>`;
+  document.getElementById('entity-modal-backdrop').classList.add('open');
+}
+function featureBars(e){
+  const feats = [
+    ['Transaction velocity', Math.min(1, e.velocityRatio/10)],
+    ['Counterparty count', Math.min(1, e.counterparties/100)],
+    ['IP diversity', Math.min(1, e.ipCount/30)],
+    ['Geographic diversity', Math.min(1, e.countryCount/6)],
+    ['Graph centrality', e.centrality],
+  ];
+  return feats.map(([l,v])=>`
+    <div class="feature-bar-row">
+      <div class="feature-bar-label">${l}</div>
+      <div class="feature-bar-track"><div class="feature-bar-fill" style="width:${Math.max(4,v*100)}%"></div></div>
+      <div class="feature-bar-val">${(v*100).toFixed(0)}%</div>
+    </div>`).join('');
+}
+function openTxModal(txId){
+  const t = window.LW.txs.find(x=>x.id===txId);
+  if(!t) return;
+  const modal = document.getElementById('entity-modal-content');
+  modal.innerHTML = `
+    <button class="modal-close" onclick="closeModal('entity-modal-backdrop')">✕</button>
+    <h2 class="tx-id">${t.id}</h2>
+    <div class="modal-sub">${t.txid} · ${fmtDate(t.ts)}</div>
+    <div class="section-label" style="margin-top:0;">INPUTS → OUTPUTS</div>
+    <div style="font-size:13px; margin-bottom:10px;">
+      ${t.inputs.map((w,i)=>`<span class="entity-id" style="cursor:pointer" onclick="closeModal('entity-modal-backdrop');openEntityModal('${w}')">${w}</span> (${t.inputAmounts[i]})`).join(', ')}
+      <span style="color:var(--text-faint);"> → </span>
+      ${t.outputs.map((w,i)=>`<span class="entity-id" style="cursor:pointer" onclick="closeModal('entity-modal-backdrop');openEntityModal('${w}')">${w}</span> (${t.outputAmounts[i]})`).join(', ')}
+    </div>
+    <div class="grid grid-stats" style="grid-template-columns:repeat(4,1fr);">
+      <div><div class="stat-label" style="font-size:10px;">Amount</div><div class="mono">${t.amount} BTC</div></div>
+      <div><div class="stat-label" style="font-size:10px;">Fee</div><div class="mono">${t.fee} BTC</div></div>
+      <div><div class="stat-label" style="font-size:10px;">Script type</div><div class="mono">${t.scriptType}</div></div>
+      <div><div class="stat-label" style="font-size:10px;">Origin IP</div><div class="mono ip-id" style="cursor:pointer" onclick="closeModal('entity-modal-backdrop');openEntityModal('${t.ip}')">${t.ip}</div></div>
+    </div>
+    <div style="margin-top:16px;"><button class="btn primary" onclick="addToCase('${t.id}','tx')">Add to case</button></div>`;
+  document.getElementById('entity-modal-backdrop').classList.add('open');
+}
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.getElementById('entity-modal-backdrop').addEventListener('click', e=>{ if(e.target.id==='entity-modal-backdrop') closeModal('entity-modal-backdrop'); });
+document.getElementById('case-modal-backdrop').addEventListener('click', e=>{ if(e.target.id==='case-modal-backdrop') closeModal('case-modal-backdrop'); });
+</script>
+<script>
+/* =========================================================================
+   INVESTIGATION GRAPH (d3 force layout)
+   ========================================================================= */
+let graphSim = null, graphNodes = [], graphLinks = [], graphZoomBehavior = null, currentGraphCenter = null;
+
+function populateGraphSelectors(){
+  const typeSel = document.getElementById('graph-entity-type');
+  const idSel = document.getElementById('graph-entity-select');
+  function fill(){
+    const type = typeSel.value;
+    const list = type==='tx' ? window.LW.txs.map(t=>t.id) : window.LW.entities.filter(e=>e.type===type).map(e=>e.id);
+    idSel.innerHTML = list.map(id=>`<option value="${id}">${id}</option>`).join('');
+  }
+  typeSel.onchange = fill; fill();
+  idSel.value = 'W8291';
+}
+function loadGraphFor(){
+  const type = document.getElementById('graph-entity-type').value;
+  const id = document.getElementById('graph-entity-select').value;
+  loadGraphForEntity(id, type);
+}
+function loadGraphForEntity(id, type){
+  currentGraphCenter = id;
+  const {nodes, links} = buildNeighborhood(id, type, 1);
+  graphNodes = nodes; graphLinks = links;
+  drawGraph();
+  renderGraphMetrics(id);
+}
+function buildNeighborhood(centerId, type, hops){
+  const nodeMap = new Map();
+  const links = [];
+  function addNode(id, ntype){
+    if (!nodeMap.has(id)) nodeMap.set(id, { id, type: ntype });
+    return nodeMap.get(id);
+  }
+  addNode(centerId, type);
+  let frontier = [{id:centerId, type}];
+  for(let h=0; h<hops; h++){
+    const next = [];
+    frontier.forEach(f=>{
+      let relatedTx = [];
+      if (f.type==='wallet') relatedTx = window.LW.txs.filter(t=>t.inputs.includes(f.id)||t.outputs.includes(f.id));
+      else if (f.type==='ip') relatedTx = window.LW.txs.filter(t=>t.ip===f.id);
+      else if (f.type==='tx') relatedTx = window.LW.txs.filter(t=>t.id===f.id);
+      relatedTx.slice(0,8).forEach(t=>{
+        addNode(t.id, 'tx');
+        links.push({source:f.id, target:t.id});
+        t.inputs.forEach(w=>{ addNode(w,'wallet'); links.push({source:w, target:t.id}); next.push({id:w,type:'wallet'}); });
+        t.outputs.forEach(w=>{ addNode(w,'wallet'); links.push({source:t.id, target:w}); next.push({id:w,type:'wallet'}); });
+        if (t.ip){ addNode(t.ip,'ip'); links.push({source:t.ip, target:t.id}); next.push({id:t.ip,type:'ip'}); }
+      });
+    });
+    frontier = next;
+  }
+  // dedupe links
+  const seen = new Set(); const dedupLinks = [];
+  links.forEach(l=>{ const k = l.source+'->'+l.target; if(!seen.has(k)){ seen.add(k); dedupLinks.push(l); } });
+  return { nodes:[...nodeMap.values()].slice(0,80), links: dedupLinks };
+}
+function expandGraph(){
+  if (!currentGraphCenter) return;
+  const type = graphNodes.find(n=>n.id===currentGraphCenter)?.type || 'wallet';
+  const {nodes, links} = buildNeighborhood(currentGraphCenter, type, 2);
+  graphNodes = nodes; graphLinks = links;
+  drawGraph();
+}
+const colorFor = { wallet:'#2ed3c6', ip:'#7c93ff', tx:'#f0ac4b' };
+function drawGraph(){
+  const svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+  const wrap = document.getElementById('graph-wrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  svg.attr('viewBox', [0,0,w,h]);
+  const g = svg.append('g');
+  graphZoomBehavior = d3.zoom().scaleExtent([0.3,3]).on('zoom', (ev)=>{ g.attr('transform', ev.transform); });
+  svg.call(graphZoomBehavior);
+
+  const link = g.append('g').selectAll('line').data(graphLinks).join('line')
+    .attr('stroke', '#2a3542').attr('stroke-width', 1.2);
+
+  const node = g.append('g').selectAll('g').data(graphNodes).join('g')
+    .attr('class','gnode')
+    .style('cursor','pointer')
+    .call(d3.drag()
+      .on('start', (ev,d)=>{ if(!ev.active) graphSim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
+      .on('end', (ev,d)=>{ if(!ev.active) graphSim.alphaTarget(0); d.fx=null; d.fy=null; }))
+    .on('click', (ev,d)=>showGraphNodePanel(d));
+
+  node.append('circle')
+    .attr('r', d=> d.id===currentGraphCenter ? 13 : d.type==='tx'?7:9)
+    .attr('fill', d=>colorFor[d.type])
+    .attr('stroke', d=> d.id===currentGraphCenter ? '#fff' : 'none')
+    .attr('stroke-width', 2)
+    .attr('opacity', d=>{ const e = window.LW.entityById(d.id); return e && e.score>0.6 ? 1 : 0.85; });
+
+  node.append('text').text(d=>d.id).attr('x',12).attr('y',4)
+    .attr('font-family','IBM Plex Mono').attr('font-size',10).attr('fill','#8493a8');
+
+  graphSim = d3.forceSimulation(graphNodes)
+    .force('link', d3.forceLink(graphLinks).id(d=>d.id).distance(70).strength(0.6))
+    .force('charge', d3.forceManyBody().strength(-180))
+    .force('center', d3.forceCenter(w/2, h/2))
+    .force('collide', d3.forceCollide(24))
+    .on('tick', ()=>{
+      link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+      node.attr('transform', d=>`translate(${d.x},${d.y})`);
+    });
+}
+function showGraphNodePanel(d){
+  const panel = document.getElementById('graph-node-panel');
+  const e = window.LW.entityById(d.id);
+  let html = `<div style="display:flex; justify-content:space-between; align-items:center;"><strong class="${d.type==='wallet'?'entity-id':d.type==='ip'?'ip-id':'tx-id'}">${d.id}</strong>`;
+  if (e) html += priorityPill(e.priority);
+  html += `<button class="btn small" onclick="document.getElementById('graph-node-panel').classList.remove('open')">✕</button></div>`;
+  if (e){
+    html += `<div style="margin-top:8px; display:flex; gap:16px; font-size:11.5px; color:var(--text-dim);">
+      <span>Anomaly score: <span class="mono" style="color:var(--text);">${e.score}</span></span>
+      <span>Degree: <span class="mono" style="color:var(--text);">${graphLinks.filter(l=>l.source.id===d.id||l.target.id===d.id||l.source===d.id||l.target===d.id).length}</span></span>
+      <span>PageRank (sim): <span class="mono" style="color:var(--text);">${(e.centrality*0.4+0.1).toFixed(2)}</span></span>
+    </div>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <button class="btn small" onclick="openEntityModal('${d.id}')">Open lead</button>
+      <button class="btn small primary" onclick="addToCase('${d.id}','${d.type}')">Add to case</button>
+      <button class="btn small" onclick="loadGraphForEntity('${d.id}','${d.type}')">Recenter here</button>
+    </div>`;
+  } else {
+    html += `<div style="margin-top:8px; font-size:11.5px; color:var(--text-dim);">Transaction node — click "Recenter" to explore its wallets.</div>
+    <button class="btn small" style="margin-top:6px;" onclick="openTxModal('${d.id}')">Open transaction</button>`;
+  }
+  panel.innerHTML = html;
+  panel.classList.add('open');
+}
+function zoomGraph(factor){ d3.select('#graph-svg').transition().call(graphZoomBehavior.scaleBy, factor); }
+function resetGraphZoom(){ d3.select('#graph-svg').transition().call(graphZoomBehavior.transform, d3.zoomIdentity); }
+function searchGraphNode(){
+  const q = document.getElementById('graph-search').value.trim();
+  if (!q) return;
+  const type = q.startsWith('IP')?'ip': q.startsWith('TX')?'tx':'wallet';
+  loadGraphForEntity(q, type);
+}
+function renderGraphMetrics(id){
+  const e = window.LW.entityById(id);
+  const stats = e ? [
+    ['Degree centrality', graphLinks.length],
+    ['Betweenness (sim)', (e.centrality*0.6+0.05).toFixed(2)],
+    ['PageRank (sim)', (e.centrality*0.4+0.1).toFixed(2)],
+    ['Community', 'C-' + (10 + (id.charCodeAt(1)%6))],
+  ] : [['Nodes', graphNodes.length],['Links', graphLinks.length],['Center', id],['Type','transaction']];
+  document.getElementById('graph-metrics').innerHTML = stats.map(([l,v])=>`
+    <div class="card stat-card"><div class="stat-label">${l}</div><div class="stat-value" style="font-size:16px;">${v}</div></div>`).join('');
+}
+function renderGraphPage(){
+  if (!document.getElementById('graph-entity-select').options.length) populateGraphSelectors();
+  if (!graphNodes.length) loadGraphForEntity('W8291','wallet');
+}
+
+/* =========================================================================
+   TIMELINE
+   ========================================================================= */
+function populateTimelineSelect(){
+  const sel = document.getElementById('timeline-entity');
+  sel.innerHTML = window.LW.entities.map(e=>`<option value="${e.id}">${e.id} (${e.type})</option>`).join('');
+  sel.value = 'W8291';
+}
+function selectTimelineEntity(id){ populateTimelineSelect(); document.getElementById('timeline-entity').value=id; renderTimeline(); }
+function renderTimelinePage(){ if(!document.getElementById('timeline-entity').options.length) populateTimelineSelect(); renderTimeline(); }
+function renderTimeline(){
+  const id = document.getElementById('timeline-entity').value;
+  const e = window.LW.entityById(id);
+  const related = e.related;
+  const days = [...Array(14)].map((_,i)=>{ const d = new Date(window.LW.now.getTime()-(13-i)*86400000); d.setUTCHours(0,0,0,0); return d; });
+  const freq = days.map(d=> related.filter(t=> t.ts>=d && t.ts < new Date(d.getTime()+86400000)).length);
+  const val = days.map(d=> +related.filter(t=> t.ts>=d && t.ts < new Date(d.getTime()+86400000)).reduce((s,t)=>s+t.amount,0).toFixed(3));
+  const labels = days.map(fmtDay);
+  const baseline = freq.slice(0,10).reduce((a,b)=>a+b,0)/10 || 0.5;
+  const spikeIdx = freq.map((f,i)=> f > baseline*3 ? i : -1).filter(i=>i>=0);
+
+  destroyChart('tlFreq');
+  chartRefs.tlFreq = new Chart(document.getElementById('chart-timeline-freq'), { type:'bar',
+    data:{ labels, datasets:[{ data:freq, backgroundColor: freq.map((f,i)=> spikeIdx.includes(i) ? '#ff6b5c' : '#2ed3c6') }] },
+    options: baseChartOpts(false) });
+  destroyChart('tlVal');
+  chartRefs.tlVal = new Chart(document.getElementById('chart-timeline-value'), { type:'line',
+    data:{ labels, datasets:[{ data:val, borderColor:'#7c93ff', backgroundColor:'rgba(124,147,255,0.08)', fill:true, tension:0.25, pointRadius:val.map((v,i)=>spikeIdx.includes(i)?5:0), pointBackgroundColor:'#ff6b5c' }] },
+    options: baseChartOpts(false) });
+
+  const explainBox = document.getElementById('timeline-explain');
+  if (spikeIdx.length){
+    const ratio = (freq[spikeIdx[spikeIdx.length-1]] / (baseline||0.3)).toFixed(1);
+    explainBox.innerHTML = `<div class="card-head"><span class="card-title">Behavioral change detected</span></div>
+      <div style="font-size:13px;">Transaction velocity increased approximately <strong style="color:var(--coral);">${ratio}×</strong> compared with the preceding baseline on ${labels[spikeIdx[spikeIdx.length-1]]}. This shift contributed to the entity's elevated anomaly score.</div>`;
+  } else {
+    explainBox.innerHTML = `<div class="card-head"><span class="card-title">No significant behavioral change</span></div><div style="font-size:13px; color:var(--text-dim);">Activity for ${id} stayed within its historical baseline across the observation window.</div>`;
+  }
+}
+
+/* =========================================================================
+   GEOGRAPHIC ANALYSIS
+   ========================================================================= */
+function project(lat, lon, w, h){
+  const x = (lon+180)/360*w;
+  const y = (90-lat)/180*h;
+  return [x,y];
+}
+function renderGeoPage(){
+  const countrySel = document.getElementById('geo-country-filter');
+  if (countrySel.options.length<=1){
+    window.LW.COUNTRIES.forEach(c=> countrySel.innerHTML += `<option value="${c.code}">${c.name}</option>`);
+  }
+  renderGeo();
+}
+function renderGeo(){
+  const countryFilter = document.getElementById('geo-country-filter').value;
+  const anomalyFilter = document.getElementById('geo-anomaly-filter').value;
+  const svg = d3.select('#world-map');
+  svg.selectAll('*').remove();
+  const w=960,h=460;
+  // faint graticule for context
+  for(let x=0;x<=960;x+=80) svg.append('line').attr('x1',x).attr('x2',x).attr('y1',0).attr('y2',h).attr('stroke','#161d28').attr('stroke-width',1);
+  for(let y=0;y<=460;y+=76.6) svg.append('line').attr('x1',0).attr('x2',w).attr('y1',y).attr('y2',y).attr('stroke','#161d28').attr('stroke-width',1);
+  svg.append('rect').attr('x',0).attr('y',project(23.4,0,w,h)[1]).attr('width',w).attr('height', project(-23.4,0,w,h)[1]-project(23.4,0,w,h)[1]).attr('fill','rgba(46,211,198,0.02)');
+
+  const activity = {};
+  window.LW.txs.forEach(t=>{ const ip=window.LW.ipById(t.ip); if(ip) activity[ip.country]=(activity[ip.country]||0)+1; });
+
+  window.LW.COUNTRIES.forEach(c=>{
+    if (countryFilter && c.code!==countryFilter) return;
+    const relatedIps = window.LW.ips.filter(i=>i.country===c.code);
+    const anomalousHere = relatedIps.some(i=> (window.LW.entityById(i.id)?.score||0) > 0.5);
+    if (anomalyFilter==='anomalous' && !anomalousHere) return;
+    const [x,y] = project(c.lat, c.lon, w, h);
+    const count = activity[c.code]||0;
+    const r = 5 + Math.min(18, count*1.4);
+    svg.append('circle').attr('cx',x).attr('cy',y).attr('r',r)
+      .attr('fill', anomalousHere ? 'rgba(255,107,92,0.25)' : 'rgba(46,211,198,0.18)')
+      .attr('stroke', anomalousHere ? '#ff6b5c' : '#2ed3c6').attr('stroke-width',1.3)
+      .style('cursor','pointer')
+      .append('title').text(`${c.name}: ${count} sessions`);
+    svg.append('circle').attr('cx',x).attr('cy',y).attr('r',3).attr('fill', anomalousHere?'#ff6b5c':'#2ed3c6');
+    svg.append('text').attr('x',x+r+4).attr('y',y+3).attr('font-size',10).attr('font-family','IBM Plex Mono').attr('fill','#8493a8').text(c.name);
+  });
+
+  // draw hero cross-border path W8291
+  const heroCountries = ['IN','SG','DE','US'].map(code=>window.LW.COUNTRIES.find(c=>c.code===code));
+  for(let i=0;i<heroCountries.length-1;i++){
+    const [x1,y1]=project(heroCountries[i].lat,heroCountries[i].lon,w,h);
+    const [x2,y2]=project(heroCountries[i+1].lat,heroCountries[i+1].lon,w,h);
+    svg.append('line').attr('x1',x1).attr('y1',y1).attr('x2',x2).attr('y2',y2).attr('stroke','#f0ac4b').attr('stroke-width',1.4).attr('stroke-dasharray','4,3');
+  }
+
+  destroyChart('countryBar');
+  const entries = Object.entries(activity).sort((a,b)=>b[1]-a[1]);
+  chartRefs.countryBar = new Chart(document.getElementById('chart-country-bar'), { type:'bar',
+    data:{ labels: entries.map(e=>e[0]), datasets:[{data: entries.map(e=>e[1]), backgroundColor:'#2ed3c6'}] }, options: baseChartOpts(false) });
+
+  document.getElementById('geo-path-example').innerHTML = `
+    <div style="font-size:13px; line-height:2.1;">
+      <span class="entity-id">W8291</span><br>
+      → <span class="mono">India</span><br>
+      → <span class="mono">Singapore</span><br>
+      → <span class="mono">Germany</span><br>
+      → <span class="mono">United States</span>
+    </div>
+    <div style="font-size:11.5px; color:var(--text-faint); margin-top:8px;">Geographic diversity across 4 jurisdictions within the observation window — shown as a dashed path on the map above.</div>`;
+}
+</script>
+<script>
+/* =========================================================================
+   LEADS
+   ========================================================================= */
+let leadsData = null;
+function initLeads(){
+  const strong = window.LW.entities.filter(e=>e.score>0.4);
+  leadsData = strong.map((e,i)=>({
+    id: 'LEAD-'+(1030+i), entity: e.id, entityType: e.type, priority: e.priority,
+    score: e.score, ts: new Date(window.LW.now.getTime()-Math.random()*4*86400000),
+    evidence: e.related.length, status: i<2?'Under Investigation': i===2?'Reviewed' : 'New',
+  }));
+}
+function renderLeads(){
+  if (!leadsData) initLeads();
+  const statusF = document.getElementById('lead-status-filter').value;
+  const prF = document.getElementById('lead-priority-filter').value;
+  const sort = document.getElementById('lead-sort').value;
+  let rows = leadsData.filter(l=> (!statusF || l.status===statusF) && (!prF || l.priority===prF));
+  if (sort==='score') rows = [...rows].sort((a,b)=>b.score-a.score);
+  if (sort==='evidence') rows = [...rows].sort((a,b)=>b.evidence-a.evidence);
+  if (sort==='time') rows = [...rows].sort((a,b)=>b.ts-a.ts);
+  document.getElementById('lead-count').textContent = rows.length + ' leads';
+  document.getElementById('leads-table').innerHTML = `<tr><th>Lead ID</th><th>Entity</th><th>Type</th><th>Priority</th><th>Score</th><th>Timestamp</th><th>Evidence</th><th>Status</th></tr>` +
+    rows.map(l=>`<tr class="row-link" onclick="openLeadDetail('${l.id}')">
+      <td class="mono">${l.id}</td><td class="${l.entityType==='wallet'?'entity-id':'ip-id'}">${l.entity}</td>
+      <td>${l.entityType==='wallet'?'Wallet':'IP address'}</td><td>${priorityPill(l.priority)}</td>
+      <td class="mono">${l.score}</td><td class="mono" style="font-size:11px;">${fmtDate(l.ts)}</td>
+      <td class="mono">${l.evidence}</td>
+      <td><select onclick="event.stopPropagation()" onchange="updateLeadStatus('${l.id}', this.value)">
+        ${['New','Under Investigation','Reviewed','Dismissed','Archived'].map(s=>`<option ${s===l.status?'selected':''}>${s}</option>`).join('')}
+      </select></td></tr>`).join('');
+}
+function updateLeadStatus(id, status){ const l = leadsData.find(x=>x.id===id); if(l) l.status=status; renderLeads(); }
+function openLeadDetail(id){ const l = leadsData.find(x=>x.id===id); if(l) openEntityModal(l.entity); }
+
+/* =========================================================================
+   AI INVESTIGATOR
+   ========================================================================= */
+let chatHistory = [];
+function renderAiPage(){
+  const sel = document.getElementById('ai-entity-select');
+  if (!sel.options.length){
+    sel.innerHTML = window.LW.entities.filter(e=>e.score>0.3).map(e=>`<option value="${e.id}">${e.id} (${e.priority})</option>`).join('');
+    sel.value = 'W8291';
+    setAiContext();
+  }
+  if (!chatHistory.length){
+    pushChat('ai', `I'm the AI Investigator. I can summarize why an entity was flagged, trace its strongest connections, or explain a behavioral change — all from the data already loaded in this session. Try asking about <span class="entity-id">W8291</span>.`, false);
+    renderChatSuggestions();
+  }
+}
+function setAiContext(){ aiContextEntity = document.getElementById('ai-entity-select').value; setAiContextTo(aiContextEntity); }
+function setAiContextTo(id){
+  aiContextEntity = id;
+  document.getElementById('ai-entity-select').value = id;
+  document.getElementById('ai-context-chip').textContent = 'context: ' + id;
+  const e = window.LW.entityById(id);
+  document.getElementById('ai-context-panel').innerHTML = e ? `
+    <div class="grid grid-stats" style="grid-template-columns:1fr 1fr;">
+      <div class="stat-card card"><div class="stat-label">Anomaly score</div><div class="stat-value" style="font-size:18px;">${e.score}</div></div>
+      <div class="stat-card card"><div class="stat-label">Priority</div><div style="margin-top:4px;">${priorityPill(e.priority)}</div></div>
+      <div class="stat-card card"><div class="stat-label">Counterparties</div><div class="stat-value" style="font-size:18px;">${e.counterparties}</div></div>
+      <div class="stat-card card"><div class="stat-label">Linked IPs</div><div class="stat-value" style="font-size:18px;">${e.ipCount}</div></div>
+    </div>
+    <button class="btn small" style="margin-top:10px; width:100%;" onclick="openEntityModal('${id}')">Open full lead</button>` : '';
+  renderChatSuggestions();
+}
+function renderChatSuggestions(){
+  const sugg = ['Why was this entity flagged?','Show its strongest connections','What changed in its behavior?','Which transactions contributed most?','Show connected IP addresses','Summarize this investigation'];
+  document.getElementById('chat-suggestions').innerHTML = sugg.map(s=>`<button class="btn small ghost" onclick="askPreset('${s.replace(/'/g,"\\'")}')">${s}</button>`).join('');
+}
+function askPreset(q){ document.getElementById('chat-input').value = q; sendChat(); }
+function pushChat(who, html, disclaim){
+  chatHistory.push({who, html});
+  const win = document.getElementById('chat-window');
+  const div = document.createElement('div');
+  div.className = 'chat-msg '+who;
+  div.innerHTML = html + (disclaim ? `<div class="disclaimer">Analytical summary from loaded data — not a determination of criminal activity.</div>` : '');
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+function sendChat(){
+  const input = document.getElementById('chat-input');
+  const q = input.value.trim();
+  if (!q) return;
+  pushChat('user', q, false);
+  input.value = '';
+  setTimeout(()=>{ pushChat('ai', answerQuestion(q), true); }, 350);
+}
+function answerQuestion(q){
+  const ql = q.toLowerCase();
+  const id = aiContextEntity || 'W8291';
+  const e = window.LW.entityById(id);
+  if (!e) return `I don't have a selected entity in context. Choose one from the panel on the right.`;
+  const reasons = window.LW.reasonsFor(e);
+  if (ql.includes('why') && ql.includes('flag')){
+    return `<strong class="entity-id">${id}</strong> was flagged primarily because ${reasons[0].charAt(0).toLowerCase()+reasons[0].slice(1)} ${reasons.length>1?`It is also connected to ${e.counterparties} counterparties and ${e.ipCount} IP addresses.`:''} The strongest contributing signals are transaction velocity, network diversity, and graph centrality — combining for an overall anomaly score of ${e.score}.`;
+  }
+  if (ql.includes('connection') || ql.includes('strongest')){
+    const topTx = e.related.slice(0,3).map(t=>t.id).join(', ');
+    return `${id}'s strongest connections come through ${e.counterparties} counterparty wallets and ${e.ipCount} distinct IPs. The highest-value linking transactions are ${topTx || 'not yet available in this sample'}. Open the <em>Investigation Graph</em> to trace the full neighborhood.`;
+  }
+  if (ql.includes('chang') || ql.includes('behav')){
+    return `Transaction velocity for ${id} increased approximately ${e.velocityRatio}× relative to its 11-day baseline, concentrated in the most recent observation window. This shift is the single largest contributor to its anomaly score.`;
+  }
+  if (ql.includes('transaction') && (ql.includes('contribut') || ql.includes('most'))){
+    const top = e.related.slice(0,4).map(t=>`${t.id} (${t.amount} BTC)`).join(', ');
+    return `The transactions contributing most to the anomaly score are: ${top || 'none recorded for this entity in the loaded sample'}. These show the fan-out pattern and value spikes flagged by the ensemble model.`;
+  }
+  if (ql.includes('ip')){
+    const relatedIps = [...new Set(e.related.map(t=>t.ip))].slice(0,6);
+    return `${id} is associated with ${e.ipCount} distinct IP addresses in this sample, including ${relatedIps.join(', ')}. Geographic spread across ${e.countryCount} ${e.countryCount===1?'country':'countries'} contributed to its risk signal.`;
+  }
+  if (ql.includes('summar')){
+    return `Investigation summary for <strong class="entity-id">${id}</strong>: anomaly score ${e.score} (${e.priority} priority), ${e.txCount} transactions, ${e.counterparties} counterparties, ${e.ipCount} linked IPs across ${e.countryCount} ${e.countryCount===1?'country':'countries'}. Leading signals: ${reasons.slice(0,2).join(' ')}`;
+  }
+  return `Based on the loaded data for <strong class="entity-id">${id}</strong>: anomaly score ${e.score}, ${e.priority} priority, ${e.counterparties} counterparties across ${e.countryCount} ${e.countryCount===1?'country':'countries'}. Ask me why it was flagged, what changed in its behavior, or which transactions matter most for more detail.`;
+}
+
+/* =========================================================================
+   CASE WORKSPACE
+   ========================================================================= */
+function openCaseModal(){
+  const modal = document.getElementById('case-modal-content');
+  modal.innerHTML = `
+    <button class="modal-close" onclick="closeModal('case-modal-backdrop')">✕</button>
+    <h2>New investigation case</h2>
+    <div class="modal-sub">Give the case a working title</div>
+    <input type="text" id="new-case-title" placeholder="e.g. Wallet network investigation" style="width:100%; margin-bottom:14px;">
+    <button class="btn primary" onclick="createCase()">Create case</button>`;
+  document.getElementById('case-modal-backdrop').classList.add('open');
+}
+function createCase(){
+  const title = document.getElementById('new-case-title').value.trim() || 'Untitled investigation';
+  currentCase = { id: 'CASE-2026-'+String(ri3(10,99)).padStart(3,'0'), title, entities: [], evidence: [], notes: '', created: new Date() };
+  closeModal('case-modal-backdrop');
+  document.getElementById('case-chip-count').textContent = 0;
+  goTo('case');
+}
+function addToCase(id, type){
+  if (!currentCase){ openCaseModal(); return; }
+  if (!currentCase.entities.find(x=>x.id===id)) currentCase.entities.push({id, type});
+  if (type==='tx' && !currentCase.evidence.includes(id)) currentCase.evidence.push(id);
+  document.getElementById('case-chip-count').textContent = currentCase.entities.length;
+  if (document.getElementById('page-case').classList.contains('active')) renderCase();
+}
+function removeFromCase(id){
+  currentCase.entities = currentCase.entities.filter(x=>x.id!==id);
+  document.getElementById('case-chip-count').textContent = currentCase.entities.length;
+  renderCase();
+}
+function saveCaseNotes(){ if(currentCase) currentCase.notes = document.getElementById('case-notes').value; }
+function renderCase(){
+  document.getElementById('case-empty').style.display = currentCase ? 'none':'block';
+  document.getElementById('case-content').style.display = currentCase ? 'block':'none';
+  if (!currentCase) return;
+  document.getElementById('case-title-display').textContent = currentCase.title;
+  document.getElementById('case-id-display').textContent = currentCase.id;
+  document.getElementById('case-meta').innerHTML = `<div style="font-size:12px; color:var(--text-dim);">Opened ${fmtDate(currentCase.created)} · ${currentCase.entities.length} entities · ${currentCase.evidence.length} evidence items</div>`;
+  document.getElementById('case-entities').innerHTML = currentCase.entities.length ? currentCase.entities.map(en=>`
+    <span class="case-entity-tag"><span class="${en.type==='wallet'?'entity-id':en.type==='ip'?'ip-id':'tx-id'}">${en.id}</span><button onclick="removeFromCase('${en.id}')">✕</button></span>`).join('')
+    : `<span style="color:var(--text-faint); font-size:12px;">No entities yet — use "Add to case" from any lead, node or transaction.</span>`;
+  document.getElementById('case-evidence').innerHTML = currentCase.evidence.length ? currentCase.evidence.map(id=>{
+    const t = window.LW.txs.find(x=>x.id===id);
+    return `<div style="font-size:12px; padding:6px 0; border-bottom:1px solid var(--border-soft);"><span class="tx-id">${id}</span> ${t?`— ${t.amount} BTC — ${fmtDate(t.ts)}`:''}</div>`;
+  }).join('') : `<span style="color:var(--text-faint); font-size:12px;">No transaction evidence attached yet.</span>`;
+  document.getElementById('case-notes').value = currentCase.notes || '';
+}
+
+/* =========================================================================
+   REPORTS
+   ========================================================================= */
+function buildReportObject(){
+  const c = currentCase || { id:'CASE-DRAFT', title:'Untitled investigation', entities: window.LW.entities.slice(0,3).map(e=>({id:e.id,type:e.type})), evidence: window.LW.entities[0].related.slice(0,3).map(t=>t.id), notes:'' };
+  const entityDetails = c.entities.map(en=>{
+    const e = window.LW.entityById(en.id);
+    return e ? { id:e.id, type:e.type, score:e.score, priority:e.priority, reasons: window.LW.reasonsFor(e) } : {id:en.id, type:en.type};
+  });
+  return {
+    caseId: c.id, title: c.title, generated: new Date().toISOString(),
+    summary: `Investigation covering ${c.entities.length} entities and ${c.evidence.length} evidence items. This report contains simulated/demo output and does not assert criminal activity.`,
+    entities: entityDetails,
+    evidenceTransactions: c.evidence,
+    analystNotes: c.notes || '(none)',
+  };
+}
+function generateReport(mode){
+  const report = buildReportObject();
+  if (mode==='preview' || !mode){
+    document.getElementById('report-preview').textContent = JSON.stringify(report, null, 2);
+    return;
+  }
+  if (mode==='json'){
+    doDownload(report.caseId+'.json', JSON.stringify(report,null,2), 'application/json');
+  } else if (mode==='csv'){
+    let csv = 'entity_id,type,score,priority\n' + report.entities.map(e=>`${e.id},${e.type},${e.score||''},${e.priority||''}`).join('\n');
+    doDownload(report.caseId+'.csv', csv, 'text/csv');
+  } else if (mode==='pdf'){
+    document.getElementById('report-preview').textContent = JSON.stringify(report, null, 2);
+    setTimeout(()=>window.print(), 200);
+  }
+}
+let downloadsCap = null;
+(async function(){ try{ downloadsCap = await claude.use('downloads'); }catch(e){ downloadsCap = null; } })();
+async function doDownload(filename, data, mime){
+  if (downloadsCap){
+    try{ await downloadsCap.save({filename, data}); return; }catch(e){ /* fall through */ }
+  }
+  document.getElementById('report-preview').textContent = data;
+}
+
+/* =========================================================================
+   ARCHITECTURE
+   ========================================================================= */
+function renderArchitecture(){
+  const steps = [
+    ['DATA SOURCES','CSV / JSON / XML'],['INGESTION LAYER','DuckDB · Polars, chunked reads'],
+    ['PROCESSING','Cleaning · normalization · entity resolution'],
+    ['FEATURE ENGINE','Behavioral · temporal · network · graph features'],
+    ['AI / ML','Isolation Forest · DBSCAN/HDBSCAN · graph analytics'],
+    ['INTELLIGENCE ENGINE','Anomaly scoring · lead prioritization · explainability'],
+    ['APPLICATION','Dashboard · Investigation Graph · AI Investigator'],
+    ['REPORTING','JSON · CSV · PDF'],
+  ];
+  document.getElementById('arch-flow').innerHTML = steps.map(([t,s],i)=>`
+    <div class="arch-box"><div class="t">${t}</div><div class="s">${s}</div></div>${i<steps.length-1?'<div class="arch-arrow">↓</div>':''}`).join('');
+
+  const funnel = [
+    ['Raw transactions', 10482003], ['Wallets resolved', 500214], ['IPs resolved', 81940],
+    ['Candidate entities', 12000], ['High-anomaly entities', 500], ['Investigation leads', 100], ['High-priority cases', 20],
+  ];
+  const maxV = funnel[0][1];
+  document.getElementById('arch-funnel').innerHTML = funnel.map(([l,v])=>`
+    <div class="funnel-row"><div class="funnel-label">${l}</div><div class="funnel-bar" style="width:${Math.max(6,(v/maxV)*100)}%;">${v.toLocaleString()}</div></div>`).join('');
+}
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+window.addEventListener('DOMContentLoaded', ()=>{
+  renderOverview();
+  populateGraphSelectors();
+  populateTimelineSelect();
+});
+window.addEventListener('resize', ()=>{ if (document.getElementById('page-graph').classList.contains('active') && graphNodes.length) drawGraph(); });
+</script>
+</body>
+</html>
